@@ -1,4 +1,6 @@
-# Possession pipeline
+# Possession pipeline (team FCPS)
+
+The submitted file is the tracking-only run: `python run.py --name FCPS`. The video step below is optional and documented; on this match it relabels under 1% of graded frames.
 
 Built on top of the official starter repository. Everything added for the submission is in
 `solution/` and `run.py`.
@@ -58,9 +60,9 @@ and a box sized by projecting a 22 cm ball is written. Crops are at native scale
 held-out time blocks. Then:
 
 ```bash
-python make_pseudo_labels.py
-yolo detect train data=data/yolo_ball_ds/ball.yaml model=yolov8s.pt imgsz=640 epochs=30 batch=8 device=0 seed=0 deterministic=True workers=2 scale=0.25 project=runs name=ball
-python detect_ball.py --weights runs/detect/ball/weights/best.pt --cls 0 --out data/cache/yolo_ball_ft.npz
+python make_pseudo_labels.py --min-box 24
+yolo detect train data=data/yolo_ball_ds/ball.yaml model=yolov8n.pt imgsz=640 epochs=20 batch=8 device=0 seed=0 deterministic=True workers=2 scale=0.25 project=<absolute path of this repo>/runs name=ball exist_ok=True
+python detect_ball.py --weights runs/ball/weights/best.pt --cls 0 --out data/cache/yolo_ball_ft.npz
 python run.py --name <team_name> --yolo data/cache/yolo_ball_ft.npz
 ```
 
