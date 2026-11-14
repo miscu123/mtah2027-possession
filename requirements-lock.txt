@@ -1,0 +1,4 @@
+# Pinned versions the submission was generated with (Python 3.12, Windows 11).
+# The pipeline needs nothing beyond numpy and pandas.
+numpy==2.5.4
+pandas==3.1.0
