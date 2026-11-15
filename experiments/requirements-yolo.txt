@@ -1,12 +1,12 @@
-# Only for detect_ball.py (the optional video step). run.py itself needs only numpy and pandas.
+# Only for experiments/detect_ball.py (the optional video step). run.py itself needs only numpy and pandas.
 #
 # PyTorch with CUDA has to come from PyTorch's own index; install it first:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 # then:
-#   pip install -r requirements-yolo.txt
+#   pip install -r experiments/requirements-yolo.txt
 #
 # After installing, pin the exact versions you ran with (pip freeze | findstr /i "torch ultralytics opencv")
 # so the detections can be reproduced.
--r requirements-lock.txt
+-r ../requirements-lock.txt
 ultralytics
 opencv-python

@@ -1,7 +1,7 @@
 """Find the ball in the tactical video on the frames where the tracking has lost it.
 
-    pip install -r requirements-yolo.txt
-    python detect_ball.py                      # ~1-2 h on a GTX 1650; resumable
+    pip install -r experiments/requirements-yolo.txt
+    python experiments/detect_ball.py                      # ~1-2 h on a GTX 1650; resumable
     python run.py --name <team> --yolo         # uses the detections
 
 Only the graded frames where the ball is still missing after the pipeline's own gap repair are
@@ -26,7 +26,7 @@ import time
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
 

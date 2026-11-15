@@ -39,6 +39,16 @@ K_OUT = 2.0
 # frames and compared with a threshold found by Otsu's method over the whole match (no labels).
 SPEED_WINDOW = FPS
 K_SLOW = 0.6
+# Width of the ramp around that threshold, in log units: the evidence reaches full weight when the
+# mean speed is ~35% below (standing) or above (moving) the threshold.
+SPEED_SPREAD = 0.3
+# After the ball has been beyond a line for this many frames in a row (0.4 s: not a one-frame
+# tracking excursion) it is out, and stays "awaiting restart" until it is seen inside the lines
+# moving at RESTART_SPEED or more. A pass, throw-in or kick is well above 8 m/s; a ball carried or
+# rolled back to the spot is below it. Speed is measured over +/- RESTART_WINDOW frames.
+LATCH_MIN_OUT = 10
+RESTART_SPEED = 8.0  # m/s
+RESTART_WINDOW = 3
 K_LONG_GAP = 0.3
 # Fewer tracked players than this: camera not on the pitch (halftime, replays) -> not play.
 MIN_PLAYERS = 10
@@ -46,7 +56,10 @@ K_FEW_PLAYERS = 0.5
 
 # -- Smart Tagging priors (weak on purpose: the tags are automatic and imprecise) ----------------
 K_TAG_SETPIECE = 0.5   # D evidence over the first half of a SET PIECES window
-K_TAG_TEAM = 0.15      # team evidence over a phase interval
+# Team evidence per frame inside a phase interval. Overlapping tags for the same team count once
+# (features.tagging_scores), and the evidence is applied only where the tracking is silent
+# (features.fill_silence), so a tag can decide an unseen stretch but never outvote a visible touch.
+K_TAG_TEAM = 0.15
 # Codes whose Team tag is the team IN possession, and codes whose Team tag is the team WITHOUT the
 # ball. Codes not listed here contribute no team evidence.
 TAG_TEAM_IN_POSSESSION = (

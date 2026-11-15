@@ -1,4 +1,4 @@
-"""Fill frames where the tracking has no ball with YOLO detections from detect_ball.py.
+"""Fill frames where the tracking has no ball with YOLO detections (experiments/detect_ball.py).
 
 Only frames where the ATD has no ball are touched; an ATD observation always wins. A candidate is
 accepted only if it is confident enough and lands on (or just beside) the pitch. Among accepted
@@ -16,7 +16,8 @@ from . import config as C
 def fill_ball(ball, det_path, pitch):
     """(ball with gaps filled where YOLO saw it, bool mask of the frames that came from YOLO)."""
     if not os.path.isfile(det_path):
-        raise IOError("no detections at {}; run python detect_ball.py first".format(det_path))
+        raise IOError("no detections at {}; run python experiments/detect_ball.py first"
+                      .format(det_path))
     data = np.load(det_path)
     frames, cand = data["frame"], data["cand"]
     length, width = pitch

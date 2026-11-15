@@ -7,7 +7,7 @@ it claims (label counts, number and length of possessions). Deterministic: the s
 same file, byte for byte.
 
 Options:
-    --yolo          also use the ball detections from detect_ball.py (the video)
+    --yolo          also use the ball detections from experiments/detect_ball.py (the video)
     --no-tagging    ignore the Smart Tagging (tracking only)
     --out DIR       write somewhere other than evaluation/results/
 """
@@ -62,17 +62,21 @@ def build_labels(use_tagging=True, yolo_path=None):
     d_home, d_away = F.nearest_by_team(atd, ball, pitch)
     weight = np.where(from_yolo, C.YOLO_WEIGHT, 1.0)
     team = F.team_scores(d_home, d_away, kind, extra_weight=weight)
-    dead, speed_threshold = F.dead_scores(atd, ball, kind, gap_len, pitch, graded,
-                                          untrusted=from_yolo)
+    still, speed_threshold = F.standstill(atd, pitch, graded)
+    n_players = np.isfinite(atd["px"]).sum(axis=1)
+    out = F.ball_out(ball, kind, pitch, untrusted=from_yolo)
+    waiting = F.awaiting_restart(ball, kind, out, pitch)
+    dead = F.dead_scores(kind, gap_len, n_players, still, out, waiting)
     print("dead-ball speed threshold (Otsu, whole match): {:.2f} m/s".format(speed_threshold))
 
     if use_tagging:
         import load_smart_tagging
         events = load_smart_tagging.load()
         tag_team, tag_dead = F.tagging_scores(events, n_frames, atd["home"], atd["away"])
-        team += tag_team
+        team += F.fill_silence(team, tag_team)
         dead += tag_dead
         print("smart tagging: {} intervals used as weak priors".format(len(events)))
+    team = F.damp_when_dead_looking(team, still, waiting)
 
     scores = np.column_stack([team[:, 0], team[:, 1], dead])
     labels = np.full(n_frames, "X", dtype="<U1")
@@ -114,7 +118,8 @@ if __name__ == "__main__":
     parser.add_argument("--out", default=os.path.join(ROOT, "evaluation", "results"))
     parser.add_argument("--no-tagging", action="store_true")
     parser.add_argument("--yolo", nargs="?", const=os.path.join(DATA_DIR, "cache", "yolo_ball.npz"),
-                        default=None, help="fill missing ball positions with detect_ball.py output")
+                        default=None,
+                        help="fill missing ball positions with experiments/detect_ball.py output")
     args = parser.parse_args()
 
     labels = build_labels(use_tagging=not args.no_tagging, yolo_path=args.yolo)

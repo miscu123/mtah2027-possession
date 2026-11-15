@@ -1,9 +1,9 @@
 """Build a YOLO training set for the ball from the match itself, with no human labels.
 
-    python make_pseudo_labels.py                        # -> data/yolo_ball_ds/ (gitignored)
+    python experiments/make_pseudo_labels.py            # -> data/yolo_ball_ds/ (gitignored)
     yolo detect train data=data/yolo_ball_ds/ball.yaml model=yolov8s.pt imgsz=640 epochs=30 ^
          batch=8 device=0 seed=0 deterministic=True workers=2 scale=0.25 project=runs name=ball
-    python detect_ball.py --weights runs/detect/ball/weights/best.pt --cls 0 ^
+    python experiments/detect_ball.py --weights runs/detect/ball/weights/best.pt --cls 0 ^
          --out data/cache/yolo_ball_ft.npz
     python run.py --name <team> --yolo data/cache/yolo_ball_ft.npz
 
@@ -32,7 +32,7 @@ import sys
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
 

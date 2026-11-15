@@ -141,45 +141,111 @@ def otsu_threshold(values, bins=256):
     return float(centers[np.nanargmax(between)])
 
 
-def dead_scores(atd, ball, kind, gap_len, pitch, graded, untrusted=None):
-    """(per-frame log-evidence for D, speed threshold used).
+def standstill(atd, pitch, graded):
+    """(s, speed threshold in m/s). s is per frame in [-1, 1]: +1 when the players are clearly
+    standing (a stoppage), -1 when they are clearly moving (play), 0 at the threshold or when no
+    player is tracked.
+
+    The threshold is found by Otsu's method on log mean player speed over the graded frames.
+    """
+    v = mean_player_speed(atd, pitch)
+    log_v = np.log(np.maximum(v, 0.05))
+    threshold = otsu_threshold(log_v[graded])
+    s = np.where(np.isfinite(log_v),
+                 np.clip((threshold - log_v) / C.SPEED_SPREAD, -1.0, 1.0), 0.0)
+    return s, float(np.exp(threshold))
+
+
+def damp_when_dead_looking(team, still, waiting):
+    """Team evidence scaled down while the players are standing or a restart is awaited.
+
+    A player next to the ball while everyone stands still, or after the ball has gone out and
+    before it is put back into play, is about to take a free kick, a corner, a goal kick or a
+    throw-in -- not controlling a live ball. So "who is nearest" counts in full only while the
+    game is moving, fades to nothing at a clear standstill, and is ignored while a restart is
+    awaited.
+    """
+    quiet = np.maximum(np.clip(still, 0.0, 1.0), waiting.astype(np.float64))
+    return team * (1.0 - quiet)[:, None]
+
+
+def ball_out(ball, kind, pitch, untrusted=None):
+    """Bool mask: the ball is seen beyond a line by more than OUT_MARGIN.
 
     untrusted, if given, marks frames whose ball position must not count as "out of play" on its
     own (YOLO detections).
     """
     length, width = pitch
-    n = len(ball)
-    score = np.zeros(n)
-
-    # Ball beyond a line.
     bx, by = ball[:, 0] * length, ball[:, 1] * width
     trusted = (kind < 2) if untrusted is None else (kind < 2) & ~untrusted
-    out = trusted & ((bx < -C.OUT_MARGIN) | (bx > length + C.OUT_MARGIN)
-                        | (by < -C.OUT_MARGIN) | (by > width + C.OUT_MARGIN))
+    with np.errstate(invalid="ignore"):
+        return trusted & ((bx < -C.OUT_MARGIN) | (bx > length + C.OUT_MARGIN)
+                          | (by < -C.OUT_MARGIN) | (by > width + C.OUT_MARGIN))
+
+
+def awaiting_restart(ball, kind, out, pitch):
+    """Bool mask over frames with a ball position: the ball has been out of play and no restart
+    has been seen since.
+
+    By the laws of the game a ball that has left the pitch stays dead until it is thrown or kicked
+    back into play, even though it is usually carried or rolled back inside the lines first. The
+    state starts when the ball has been beyond a line for LATCH_MIN_OUT frames in a row (shorter
+    excursions are tracking noise or a ball running along the line) and ends at the first frame
+    where the ball is seen inside the lines moving at RESTART_SPEED or more.
+    """
+    length, width = pitch
+    n = len(ball)
+    bx, by = ball[:, 0] * length, ball[:, 1] * width
+    w = C.RESTART_WINDOW
+    speed = np.full(n, np.nan)
+    speed[w:-w] = np.hypot(bx[2 * w:] - bx[:-2 * w], by[2 * w:] - by[:-2 * w]) * C.FPS / (2.0 * w)
+    inside = (kind < 2) & (bx >= 0) & (bx <= length) & (by >= 0) & (by <= width)
+    restart = inside & (np.nan_to_num(speed, nan=0.0) >= C.RESTART_SPEED)
+
+    event = np.zeros(n, dtype=np.int8)       # +1 ball confirmed out, -1 restart seen
+    event[restart] = -1
+    for start, stop in _runs(out):
+        if stop - start >= C.LATCH_MIN_OUT:
+            event[start + C.LATCH_MIN_OUT - 1:stop] = 1
+    # State at each frame = the most recent event.
+    last = np.maximum.accumulate(np.where(event != 0, np.arange(n), -1))
+    return (last >= 0) & (event[np.maximum(last, 0)] == 1) & (kind < 2)
+
+
+def dead_scores(kind, gap_len, n_players, still, out, waiting):
+    """Per-frame log-evidence for D.
+
+    still is the output of standstill(), out of ball_out(), waiting of awaiting_restart().
+    """
+    score = np.zeros(len(kind))
+
+    # Ball beyond a line.
     score[out] += C.K_OUT
 
-    # Players standing still.
-    v = mean_player_speed(atd, pitch)
-    log_v = np.log(np.maximum(v, 0.05))
-    threshold = otsu_threshold(log_v[graded])
-    spread = 0.3  # in log units: ~35% either side of the threshold reaches full weight
-    score += np.where(np.isfinite(log_v),
-                      C.K_SLOW * np.clip((threshold - log_v) / spread, -1.0, 1.0), 0.0)
+    # Players standing still (positive) or clearly moving (negative). While a restart is awaited,
+    # players moving is not evidence of live play -- they are fetching the ball and walking back
+    # into position -- so the negative side is switched off there.
+    score += C.K_SLOW * np.where(waiting, np.maximum(still, 0.0), still)
 
     # Ball lost for a long time.
     score[(kind == 2) & (gap_len > C.LONG_GAP)] += C.K_LONG_GAP
 
     # Camera not on the players.
-    n_players = np.isfinite(atd["px"]).sum(axis=1)
     score[n_players < C.MIN_PLAYERS] += C.K_FEW_PLAYERS
-    return score, float(np.exp(threshold))
+    return score
 
 
 # -- Smart Tagging ---------------------------------------------------------------------------
 
 def tagging_scores(events, n_frames, home_name, away_name):
-    """(team score n x 2, dead score n) from the Smart Tagging intervals."""
-    team = np.zeros((n_frames, 2))
+    """(team score n x 2, dead score n) from the Smart Tagging intervals.
+
+    Phase tags overlap heavily (a single attack is often tagged PROGRESSION, BALL IN FINAL THIRD
+    and PLAYERS IN THE BOX at once), and they all come from the same automatic model, so several
+    tags for one team are one opinion, not several. Per frame the tags vote; the side with more
+    tags gets K_TAG_TEAM once, and a tie gets nothing.
+    """
+    votes = np.zeros((n_frames, 2), dtype=np.int32)
     dead = np.zeros(n_frames)
     home, away = home_name.strip().lower(), away_name.strip().lower()
     for event in events:
@@ -199,5 +265,20 @@ def tagging_scores(events, n_frames, home_name, away_name):
             side = 1 - side
         elif code not in C.TAG_TEAM_IN_POSSESSION:
             continue
-        team[start:stop, side] += C.K_TAG_TEAM
+        votes[start:stop, side] += 1
+    team = np.zeros((n_frames, 2))
+    team[votes[:, 0] > votes[:, 1], 0] = C.K_TAG_TEAM
+    team[votes[:, 1] > votes[:, 0], 1] = C.K_TAG_TEAM
     return team, dead
+
+
+def fill_silence(team, tag_team):
+    """Tag evidence scaled so that it only speaks where the tracking is silent.
+
+    The tracking sees who is on the ball frame by frame; a tag is one automatic guess about a
+    whole phase. So the tag counts in full where the tracking has no evidence at all (ball
+    missing, nobody near it, ball contested) and fades to nothing as the tracking evidence
+    approaches a clean touch.
+    """
+    silence = 1.0 - np.clip(team.max(axis=1) / C.K_TEAM, 0.0, 1.0)
+    return tag_team * silence[:, None]
