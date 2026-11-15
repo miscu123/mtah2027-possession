@@ -90,5 +90,20 @@ python run.py --name <team_name> --yolo data/cache/yolo_ball_ft.npz
 ```
 
 All constants are in `solution/config.py`, each with the physical reason for its value. None were
-tuned on the public ground truth: the public 5 minutes were used to check frame alignment and to
-see how stoppages and restarts are labelled, never to choose a value or to pick between versions.
+fitted to the public ground truth, and no value was swept or selected by a score on it.
+
+## How the public 5 minutes were used
+
+- To check frame alignment and the file format.
+- To see how the reference labels stoppages, restarts and short possessions, which CHALLENGE.md
+  points to it for, and to locate where the pipeline went wrong.
+- Three design decisions followed from that inspection. Tags were stopped from overruling the
+  tracking (step 6). Team evidence was gated at standstills and while a restart is awaited
+  (step 7). An idea that a stationary ball means a dead ball was dropped, because the window
+  contradicted it.
+- The awaiting-restart rule (step 4) was strengthened after a first version left one stoppage in
+  the window split into pieces. That decision was backed by a count over the whole match that
+  needs no labels: predicted possessions lying entirely between the ball going out and the next
+  restart.
+- The pipeline before and after these changes was scored on the window once each, as a sanity
+  check.
