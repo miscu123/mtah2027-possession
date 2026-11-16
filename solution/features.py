@@ -272,13 +272,13 @@ def tagging_scores(events, n_frames, home_name, away_name):
     return team, dead
 
 
-def fill_silence(team, tag_team):
-    """Tag evidence scaled so that it only speaks where the tracking is silent.
+def only_without_ball(tag_team, kind):
+    """Tag evidence kept only on frames where the tracking has no ball position.
 
     The tracking sees who is on the ball frame by frame; a tag is one automatic guess about a
-    whole phase. So the tag counts in full where the tracking has no evidence at all (ball
-    missing, nobody near it, ball contested) and fades to nothing as the tracking evidence
-    approaches a clean touch.
+    whole phase. While the ball is visible the tracking decides alone: a clean touch is evidence
+    for a team, and a loose or contested ball leaves possession with the last team that had it
+    (CHALLENGE.md), which a phase tag must not override. Where the ball is missing the tracking
+    says nothing about the team, and the tag is the only evidence there is.
     """
-    silence = 1.0 - np.clip(team.max(axis=1) / C.K_TEAM, 0.0, 1.0)
-    return tag_team * silence[:, None]
+    return tag_team * (kind == 2)[:, None]

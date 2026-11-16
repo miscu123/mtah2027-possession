@@ -57,8 +57,9 @@ K_FEW_PLAYERS = 0.5
 # -- Smart Tagging priors (weak on purpose: the tags are automatic and imprecise) ----------------
 K_TAG_SETPIECE = 0.5   # D evidence over the first half of a SET PIECES window
 # Team evidence per frame inside a phase interval. Overlapping tags for the same team count once
-# (features.tagging_scores), and the evidence is applied only where the tracking is silent
-# (features.fill_silence), so a tag can decide an unseen stretch but never outvote a visible touch.
+# (features.tagging_scores), and the evidence is applied only on frames where the tracking has no
+# ball at all (features.only_without_ball), so a tag can decide an unseen stretch but never
+# argues with what the tracking shows.
 K_TAG_TEAM = 0.15
 # Codes whose Team tag is the team IN possession, and codes whose Team tag is the team WITHOUT the
 # ball. Codes not listed here contribute no team evidence.
@@ -91,6 +92,10 @@ YOLO_WEIGHT = 0.5
 # 2-3 frame touch does not flip possession -- the CHALLENGE.md definition of "controlled".
 SWITCH_PENALTY = 10.0
 # Entering or leaving dead ball. Stoppages last seconds, so this is set higher than a switch.
+# Decoding starts on the kickoff of each half, where the ball is in play, so starting in D costs
+# the same (hmm.kickoff_init).
 DEAD_PENALTY = 12.0
-# At the start of each graded half the ball is usually not yet in play.
-INIT_ALIVE_PENALTY = 5.0
+# A stoppage shorter than this does not happen: the ball has to be fetched and put back into play,
+# and even a quick throw-in takes about three seconds. Shorter D runs between two stretches of
+# play are given back to the team that had the ball (hmm.drop_short_stoppages).
+MIN_STOPPAGE = 3 * FPS

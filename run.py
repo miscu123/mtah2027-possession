@@ -73,17 +73,32 @@ def build_labels(use_tagging=True, yolo_path=None):
         import load_smart_tagging
         events = load_smart_tagging.load()
         tag_team, tag_dead = F.tagging_scores(events, n_frames, atd["home"], atd["away"])
-        team += F.fill_silence(team, tag_team)
+        team += F.only_without_ball(tag_team, kind)
         dead += tag_dead
         print("smart tagging: {} intervals used as weak priors".format(len(events)))
     team = F.damp_when_dead_looking(team, still, waiting)
 
     scores = np.column_stack([team[:, 0], team[:, 1], dead])
     labels = np.full(n_frames, "X", dtype="<U1")
-    for _, first, last in halves:
-        path = hmm.viterbi(scores[first:last + 1])
-        labels[first:last + 1] = LABELS[path]
+    for half, first, last in halves:
+        # A half is graded from its first tracked frame, but the ball is not in play before the
+        # kickoff. Those frames are dead ball, and decoding starts on the kickoff itself.
+        kickoff = kickoff_frame(half, first, last)
+        labels[first:kickoff] = "D"
+        path = hmm.drop_short_stoppages(hmm.viterbi(scores[kickoff:last + 1]))
+        labels[kickoff:last + 1] = LABELS[path]
+        print("half {}: kickoff at frame {} ({} graded frames before it are dead ball)".format(
+            half, kickoff, kickoff - first))
     return labels
+
+
+def kickoff_frame(half, first, last):
+    """Video frame of a half's kickoff, from the table the organisers publish in the starter
+    (starter/load_smart_tagging.py, the same numbers as DATA.md and FAQ.md), kept inside the
+    half. A half with no published kickoff starts in play on its first graded frame."""
+    from load_smart_tagging import KICKOFF_VIDEO_FRAMES
+    name = {1: "1st Half", 2: "2nd Half"}.get(half)
+    return int(min(max(KICKOFF_VIDEO_FRAMES.get(name, first), first), last))
 
 
 def write_submission(path, labels):
